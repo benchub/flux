@@ -1,0 +1,4 @@
+-- make sure that we can add columns to tables without break logging
+
+-- add a column to a table were not everything is logged that we want to be logged
+-- add a column to a table were not everything is logged that we want to be not logged

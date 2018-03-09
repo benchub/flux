@@ -1,0 +1,76 @@
+-- simple usage of logged updates/inserts/delete/truncate
+
+
+begin;
+
+set search_path to beta,_change_logger,public;
+
+-- turn on logging on empty tables & make some changes to them
+select _change_logger.enable_change_logging('beta', 'red', '_red_log');
+select _change_logger.enable_change_logging('beta', 'green', '_green_log');
+
+insert into red (id,ts,payload) values (1,'2015-01-01 0:0:0+0','a');
+update red set payload = 'b' where payload = 'a';
+delete from red where payload = 'b';
+
+insert into green (one,two,ts,payload) values (1,1,'2015-01-02 0:0:0+0','b');
+
+-- twiddle the change log so that we have something static to test against.
+update _red_log set change_when = '2018-02-01 0:0:0+0' where row_pkey='{1}' and change_type = 'insert';
+update _red_log set change_when = '2018-03-01 0:0:0+0' where row_pkey='{1}' and change_type = 'update';
+update _red_log set change_when = '2018-04-01 0:0:0+0' where row_pkey='{1}' and change_type = 'delete';
+
+update _green_log set change_when = '2018-02-02 0:0:0+0' where row_pkey='{1,1}' and change_type = 'insert';
+
+
+
+
+select plan(9);
+
+-- no rows before we made the PKs
+select is(count(*),0::bigint) from get_row_from_history( NULL::beta.red, 'id=>1', '2018-01-02 0:0:0+0');
+select is(count(*),0::bigint) from get_row_from_history( NULL::beta.green, 'one=>1,two=>2', '2018-01-02 0:0:0+0');
+
+-- one row while the PK was around
+-- extend for multicolumn PK
+select is(count(*),1::bigint) from get_row_from_history( NULL::beta.red, 'id=>1', '2018-02-02 0:0:0+0');
+select is(count(*),1::bigint) from get_row_from_history( NULL::beta.red, 'id=>1', '2018-03-02 0:0:0+0');
+
+-- no rows after we deleted the PK
+-- extend for multicolumn PK
+select is(count(*),0::bigint) from get_row_from_history( NULL::beta.red, 'id=>1', '2018-04-02 0:0:0+0');
+
+-- after insert and before update, we see the first payload value
+-- extend for multicolumn PK
+select results_eq($$ select id,ts at time zone 'UTC',payload from get_row_from_history( NULL::beta.red, 'id=>1', '2018-02-02 0:0:0+0') $$ , 
+				  $$ values(1,'2015-01-01 00:00:00+0'::timestamptz at time zone 'UTC','a') $$);
+
+-- after update and before delete, we see the second payload value
+select results_eq($$ select id,ts at time zone 'UTC',payload from get_row_from_history( NULL::beta.red, 'id=>1', '2018-03-02 0:0:0+0') $$ , 
+				  $$ values(1,'2015-01-01 00:00:00+0'::timestamptz at time zone 'UTC','b') $$);
+
+
+-- validate logging on one table didn't affect any others
+
+
+-- validate logging on table x.y didn't affect z.y
+
+-- validate that changes for one PK don't affect logs for another PK
+insert into red (id,ts,payload) values (2,'2016-01-01 0:0:0+0','aa');
+update _red_log set change_when = '2018-02-01 0:0:0+0' where row_pkey='{2}' and change_type = 'insert';
+select results_eq($$ select id,ts at time zone 'UTC',payload from get_row_from_history( NULL::beta.red, 'id=>1', '2018-02-02 0:0:0+0') $$ , 
+				  $$ values(1,'2015-01-01 00:00:00+0'::timestamptz at time zone 'UTC','a') $$);
+select results_eq($$ select id,ts at time zone 'UTC',payload from get_row_from_history( NULL::beta.red, 'id=>2', '2018-02-02 0:0:0+0') $$ , 
+				  $$ values(2,'2016-01-01 00:00:00+0'::timestamptz at time zone 'UTC','aa') $$);
+
+
+-- validate get_row_history() function
+
+-- try to re-use a deleted PK
+
+-- validate truncate gets logged
+
+select * from finish();
+rollback;
+
+

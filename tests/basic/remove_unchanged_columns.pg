@@ -1,0 +1,49 @@
+-- make sure that we can remove columns to tables without break logging when those columns get no changes
+
+begin;
+select plan(3);
+
+
+set search_path to beta,_change_logger,public;
+
+-- turn on logging on an empty table & make some change
+select _change_logger.enable_change_logging('beta', 'red', '_red_log');
+
+insert into red (id,ts,payload) values (1,'2015-01-01 0:0:0+0','a');
+update red set payload = 'b' where id=1;
+
+-- twiddle the change log so that we have something static to test against.
+update _red_log set change_when = '2011-02-01 0:0:0+0' where row_pkey='{1}' and change_type = 'insert';
+update _red_log set change_when = '2011-03-01 0:0:0+0' where row_pkey='{1}' and change_type = 'update';
+
+-- remove the ts column
+alter table red drop column ts;
+-- we'd like to tweak the time we did this in the change log to be 2011-3-15, but we don't record DDL events.
+
+-- validate the ts column for id=1 was '2015-01-01 0:0:0+0' before we dropped the column
+select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', '2011-03-03 0:0:0+0') $$ , 
+				  $$ values(1,'2015-01-01 00:00:00+0'::timestamptz at time zone 'UTC','b') $$ ,
+				  'get_row_from_history() shows the previous value of a column that has been dropped before it was called, but was never modified between being logged and being dropped.');
+
+
+-- validate the ts column does not appear in the results after we dropped it for id=1
+select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', '2011-03-20 0:0:0+0') $$ , 
+				  $$ values(1,'b') $$ ,
+				  'get_row_from_history() does not show a dropped column after we drop it, but before we modify the row in any other way.');
+
+-- update the row where id=1
+update red set payload = 'c' where id=1;
+update _red_log set change_when = '2011-04-01 0:0:0+0' where row_pkey='{1}' and change_when > '2011-04-01';
+
+-- validate the ts column does not appear in the results after a modify for id=1
+select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', '2011-04-03 0:0:0+0') $$ , 
+				  $$ values(1,'c') $$, 
+				  'get_row_from_history() does not show a column that has been dropped after other row changes.');
+
+
+
+
+select * from finish();
+rollback;
+
+

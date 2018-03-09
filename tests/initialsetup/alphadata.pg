@@ -1,0 +1,29 @@
+-- make sure that our common initial testing data is as expected.
+
+begin;
+
+set search_path to public,alpha;
+
+select plan(8);
+
+
+select is(count(*),2::bigint) from red;
+select is(red.*, ROW(1,'2000-1-1 1:1:1+0','air')::red)
+	from red where id=1;
+select is(red.*, ROW(2,'2000-2-1 2:2:2+0','earth')::red)
+	from red where id=2;
+
+select is(count(*),2::bigint) from green;
+select is(green.*, ROW(3,4,'2000-3-1 3:3:3+0','water')::green)
+	from green where one=3 and two=4;
+select is(green.*, ROW(5,6,'2000-4-1 4:4:4+0','fire')::green)
+	from green where one=5 and two=6;
+
+select is(count(*),1::bigint) from blue;
+select is(blue.*, ROW('2010-10-10 10:10:10+0','this happened')::blue)
+	from blue where payload='this happened';
+
+
+
+select * from finish();
+rollback;

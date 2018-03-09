@@ -1,0 +1,57 @@
+-- make sure that we can add columns to tables without break logging
+
+begin;
+select plan(9);
+
+
+set search_path to beta,_change_logger,public;
+
+-- turn on logging on an empty table & make some change
+select _change_logger.enable_change_logging('beta', 'red', '_red_log');
+
+insert into red (id,ts,payload) values (1,'2015-01-01 0:0:0+0','a');
+update red set payload = 'b' where payload = 'a';
+insert into red (id,ts,payload) values (2,'2016-01-01 0:0:0+0','aa');
+
+-- twiddle the change log so that we have something static to test against.
+update _red_log set change_when = '2011-02-01 0:0:0+0' where row_pkey='{1}' and change_type = 'insert';
+update _red_log set change_when = '2011-03-01 0:0:0+0' where row_pkey='{1}' and change_type = 'update';
+update _red_log set change_when = '2011-04-01 0:0:0+0' where row_pkey='{1}' and change_type = 'delete';
+update _red_log set change_when = '2011-02-01 0:0:0+0' where row_pkey='{2}' and change_type = 'insert';
+
+-- add columns to a table with active logging and make some more changes
+alter table red add column i int;
+alter table red add column j int default 0;
+update red set i=1 where id=1;
+
+select is(i,1) from red where id=1;
+select is(i,null) from red where id=2;
+select is(j,0) from red where id=1;
+select is(j,0) from red where id=2;
+
+-- twiddle the change log so that we can control when these changes happened
+update _red_log set change_when = '2011-06-02 0:0:0+0' where change_when > '2011-04-01 0:0:0+0';
+
+-- delete these PKs so that we can log the final state the row was in, and alter the change log so we can pretend when it happened
+delete from red where id in (1,2);
+update _red_log set change_when = '2011-07-03 0:0:0+0' where change_when > '2011-06-02 0:0:0+0';
+
+-- validate the rows are actually gone
+select is(count(*),0::bigint) from red where id in (1,2);
+
+-- validate that i=1 where id=1 as of '2011-06-03 0:0:0+0'
+select is(i,1) from get_row_from_history( NULL::beta.red, 'id=>1', '2011-06-03 0:0:0+0') ;
+
+-- validate that i is null where id=2 as of '2011-06-03 0:0:0+0'
+select is(i,NULL) from get_row_from_history( NULL::beta.red, 'id=>2', '2011-06-03 0:0:0+0') ;
+
+-- validate that j=0 where id in (1,2) as of '2011-06-03 0:0:0+0'
+select is(j,0) from get_row_from_history( NULL::beta.red, 'id=>1', '2011-06-03 0:0:0+0') ;
+select is(j,0) from get_row_from_history( NULL::beta.red, 'id=>2', '2011-06-03 0:0:0+0') ;
+
+
+
+select * from finish();
+rollback;
+
+
