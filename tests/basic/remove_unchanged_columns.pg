@@ -46,4 +46,4 @@ select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1'
 select * from finish();
 rollback;
 
-
+-- vim: set ft=sql:

@@ -33,3 +33,5 @@ select has_function('_change_logger', 'get_row_history'::name, array['text','tex
 
 select * from finish();
 rollback;
+
+-- vim: set ft=sql:

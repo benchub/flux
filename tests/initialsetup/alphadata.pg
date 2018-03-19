@@ -27,3 +27,5 @@ select is(blue.*, ROW('2010-10-10 10:10:10+0','this happened')::blue)
 
 select * from finish();
 rollback;
+
+-- vim: set ft=sql:

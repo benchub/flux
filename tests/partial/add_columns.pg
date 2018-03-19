@@ -2,3 +2,5 @@
 
 -- add a column to a table were not everything is logged that we want to be logged
 -- add a column to a table were not everything is logged that we want to be not logged
+
+-- vim: set ft=sql:

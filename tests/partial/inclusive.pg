@@ -1,3 +1,5 @@
 -- enable logging on some columns
 -- validate changes to just those columns are logged
 -- validate changes to unlogged columns are not logged
+
+-- vim: set ft=sql:

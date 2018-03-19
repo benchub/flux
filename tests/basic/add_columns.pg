@@ -54,4 +54,4 @@ select is(j,0) from get_row_from_history( NULL::beta.red, 'id=>2', '2011-06-03 0
 select * from finish();
 rollback;
 
-
+-- vim: set ft=sql:
