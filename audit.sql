@@ -137,8 +137,8 @@ BEGIN
         v_use_new := slice(v_orig_new, v_modifier_columns);
         v_use_old := slice(v_orig_old, v_modifier_columns);
     ELSIF v_modifier_type = 'exclude' THEN
-        v_use_new := slice(v_orig_new, v_modifier_columns);
-        v_use_old := slice(v_orig_old, v_modifier_columns);
+        v_use_new := delete(v_orig_new, v_modifier_columns);
+        v_use_old := delete(v_orig_old, v_modifier_columns);
     ELSE
         v_use_new := v_orig_new;
         v_use_old := v_orig_old;

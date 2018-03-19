@@ -1,6 +1,71 @@
--- make sure that we can add columns to tables without break logging
+begin;
+select plan(8);
 
--- add a column to a table were not everything is logged that we want to be logged
--- add a column to a table were not everything is logged that we want to be not logged
+set search_path to alpha,_change_logger,public;
+
+select _change_logger.enable_change_logging('alpha', 'red', '_red_log', 'include', array['id','payload']);
+
+insert into red (id,ts,payload) values (3,'2015-01-01 0:0:0+0','a');
+SELECT results_eq(
+    $$ SELECT change_type::TEXT, count(*) FROM _red_log WHERE row_pkey = '{3}'::TEXT[] group BY change_type ORDER BY change_type $$,
+    $$ VALUES ( 'insert', 1::bigint ) $$,
+    'Single logged change in "included" table'
+);
+
+UPDATE red SET ts='2017-02-01' WHERE id = 3;
+SELECT results_eq(
+    $$ SELECT change_type::TEXT, count(*) FROM _red_log WHERE row_pkey = '{3}'::TEXT[] group BY change_type ORDER BY change_type $$,
+    $$ VALUES ( 'insert', 1::bigint ) $$,
+    'Still single logged change, because change was in ignored column, in "included" table'
+);
+
+UPDATE red SET ts='2017-03-01', payload='xxx' WHERE id = 3;
+SELECT results_eq(
+    $$ SELECT change_type::TEXT, count(*) FROM _red_log WHERE row_pkey = '{3}'::TEXT[] group BY change_type ORDER BY change_type $$,
+    $$ VALUES ( 'insert', 1::bigint ), ('update', 1::bigint) $$,
+    'Two changes, because 2nd update did change tracked column, in "included" table.'
+);
+
+alter table red add column i int;
+UPDATE red SET i = 12 WHERE id = 3;
+SELECT results_eq(
+    $$ SELECT change_type::TEXT, count(*) FROM _red_log WHERE row_pkey = '{3}'::TEXT[] group BY change_type ORDER BY change_type $$,
+    $$ VALUES ( 'insert', 1::bigint ), ('update', 1::bigint) $$,
+    'Still two changes, because new column is not in include list, so it gets ignored.'
+);
+
+
+select _change_logger.enable_change_logging('alpha', 'green', '_green_log', 'exclude', array['ts']);
+insert into green (one,two,ts,payload) values (7,13,'2015-01-01 0:0:0+0','a');
+SELECT results_eq(
+    $$ SELECT change_type::TEXT, count(*) FROM _green_log WHERE row_pkey = '{7,13}'::TEXT[] group BY change_type ORDER BY change_type $$,
+    $$ VALUES ( 'insert', 1::bigint ) $$,
+    'Single logged change in "excluded" table.'
+);
+
+UPDATE green SET ts='2017-02-01' WHERE (one, two) = (7,13);
+SELECT results_eq(
+    $$ SELECT change_type::TEXT, count(*) FROM _green_log WHERE row_pkey = '{7,13}'::TEXT[] group BY change_type ORDER BY change_type $$,
+    $$ VALUES ( 'insert', 1::bigint ) $$,
+    'Still single logged change, because change was in ignogreen column'
+);
+
+UPDATE green SET ts='2017-03-01', payload='xxx' WHERE (one,two) = (7,13);
+SELECT results_eq(
+    $$ SELECT change_type::TEXT, count(*) FROM _green_log WHERE row_pkey = '{7,13}'::TEXT[] group BY change_type ORDER BY change_type $$,
+    $$ VALUES ( 'insert', 1::bigint ), ('update', 1::bigint) $$,
+    'Two changes, because 2nd update did change tracked column.'
+);
+
+alter table green add column i int;
+UPDATE green SET i = 12 WHERE (one,two) = (7,13);
+SELECT results_eq(
+    $$ SELECT change_type::TEXT, count(*) FROM _green_log WHERE row_pkey = '{7,13}'::TEXT[] group BY change_type ORDER BY change_type $$,
+    $$ VALUES ( 'insert', 1::bigint ), ('update', 2::bigint) $$,
+    'Three changes, because new column is not ignored, in "excluded" table.'
+);
+
+select * from finish();
+rollback;
 
 -- vim: set ft=sql:
