@@ -1,4 +1,37 @@
 -- validate existing data shows up correctly in the log history
 -- validate changes to existing data
 
+begin;
+select plan(4);
+
+set search_path to beta,_change_logger,public;
+
+ALTER TABLE red DROP column ts;
+
+insert into red (id,payload) values (1,'pre-existing');
+
+select _change_logger.enable_change_logging('beta', 'red', '_red_log');
+
+select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', now() - '100 years'::INTERVAL) $$ ,
+    $$ values(1,'pre-existing') $$ ,
+    'get_row_from_history() shows current row value when no changes are logged (in the past).');
+
+select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', now() + '100 years'::INTERVAL) $$ ,
+    $$ values(1,'pre-existing') $$ ,
+    'get_row_from_history() shows current row value when no changes are logged (in the future).');
+
+UPDATE red SET payload = 'updated';
+
+UPDATE _red_log SET change_when = now() - '1 year'::INTERVAL WHERE row_pkey='{1}' AND change_type = 'update';
+
+select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', now() - '100 years'::INTERVAL) $$ ,
+    $$ values(1,'pre-existing') $$ ,
+    'get_row_from_history() shows proper value for updated row, value in the past');
+
+select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', now() + '100 years'::INTERVAL) $$ ,
+    $$ values(1,'updated') $$ ,
+    'get_row_from_history() shows proper value for updated row, value in the future');
+
+rollback;
+
 -- vim: set ft=sql:

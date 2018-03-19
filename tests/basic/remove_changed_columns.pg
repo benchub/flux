@@ -1,8 +1,9 @@
 -- make sure that we can remove columns to tables without break logging when those columns get changed
 
 begin;
-select plan(3);
+select plan(4);
 
+SET timezone = 'UTC';
 
 set search_path to beta,_change_logger,public;
 
@@ -21,27 +22,35 @@ alter table red drop column ts;
 -- we'd like to tweak the time we did this in the change log to be 2011-3-15, but we don't record DDL events.
 
 -- validate the ts column for id=2 was '2015-01-01 0:0:1+0' before we dropped the column
-select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>2', '2011-03-03 0:0:0+0') $$ , 
-				  $$ values(2,'2015-01-01 00:00:01+0'::timestamptz at time zone 'UTC','aa') $$ ,
-				  'get_row_from_history() shows the previous value of a column that has been dropped before it was called.');
+SELECT results_eq(
+    $$ SELECT row_data FROM get_row_history('beta', 'red', 'id=>2') x WHERE '2011-02-03 0:0:0+0'::timestamptz between x.valid_from AND x.valid_to $$,
+    $$ VALUES ('"id"=>"2", "ts"=>"2015-01-01 00:00:01+00", "payload"=>"aa"'::hstore) $$,
+    'Get row data FROM history with altered columns.'
+);
+
+select results_eq(
+    $$ select * from get_row_from_history( NULL::beta.red, 'id=>2', '2011-03-03 0:0:0+0') $$,
+    $$ values(2,'aa') $$,
+    'get_row_from_history() returns previous row, with current columns.'
+);
 
 -- validate the ts column does not appear in the results after we dropped it for id=2
-select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>2', '2011-03-20 0:0:0+0') $$ , 
-				  $$ values(2,'aa') $$,
-				  'get_row_from_history() does not show the value of a column that is dropped after the drop but before other row changes.');
+select results_eq(
+    $$ select * from get_row_from_history( NULL::beta.red, 'id=>2', '2011-03-20 0:0:0+0') $$,
+    $$ values(2,'aa') $$,
+    'get_row_from_history() does not show the value of a column that is dropped after the drop but before other row changes.'
+);
 
 -- update the row where id=2
 update red set payload = 'cc' where id=2;
 update _red_log set change_when = '2011-04-01 0:0:1+0' where row_pkey='{2}' and change_when > '2011-04-01';
 
 -- validate the ts column does not appear in the results after a modify for id=2
-select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>2', '2011-04-03 0:0:0+0') $$ , 
-				  $$ values(2,'cc') $$ ,
-				  'get_row_from_history() does not show a column that has been dropped after other row changes.');
-
-
-
-
+select results_eq(
+    $$ select * from get_row_from_history( NULL::beta.red, 'id=>2', '2011-04-03 0:0:0+0') $$,
+    $$ values(2,'cc') $$,
+    'get_row_from_history() does not show a column that has been dropped after other row changes.'
+);
 
 select * from finish();
 rollback;

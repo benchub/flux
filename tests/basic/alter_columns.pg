@@ -28,43 +28,47 @@ update _red_log set change_when = '2011-04-01 0:0:0+0' where row_pkey='{1}' and 
 
 -- validate that payload='b' before we change it to an array
 select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', '2011-03-03 0:0:0+0') $$ , 
-				  $$ values(1,'b') $$ ,
+				  $$ values(1,array['b']) $$ ,
 				  'get_row_from_history() shows the logged value before we change data type.');
 
 
--- validate that payload='{b}' after we updated its type to an array, but before we change the value to {foo,bar}
+--  validate that payload='{b}' after we updated its type to an array, but before we change the value to {foo,bar}
 select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', '2011-03-20 0:0:0+0') $$ , 
-				  $$ values(1,ARRAY['b']) $$ ,
-				  'get_row_from_history() shows the new data type after we change the type but before we update the row.');
+                  $$ values(1,ARRAY['b']) $$ ,
+                  'get_row_from_history() shows the new data type after we change the type but before we update the row.');
 
 -- validate that payload='{foo,bar}' after we updated the value to be {foo,bar}
 select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', '2011-04-03 0:0:0+0') $$ , 
-				  $$ values(1,ARRAY['foo','bar']) $$ ,
-				  'get_row_from_history() shows the new data type after we change the type and update the value.');
+                  $$ values(1,ARRAY['foo','bar']) $$ ,
+                  'get_row_from_history() shows the new data type after we change the type and update the value.');
 
 
 -- modify the payload type from text[] to int
 alter table red alter column payload set data type int using 15;
--- we'd like to tweak the time we did this in the change log to be 2012-1-15, but we don't record DDL events.
+-- The problem is that alter table alter column set data type doesn't call
+-- triggers. so the value of (foo,bar) is never (from the perspective of
+-- triggers) updated to something else, so it will be missing from history.
 
+-- we'd like to tweak the time we did this in the change log to be 2012-1-15, but we don't record DDL events.
 update red set payload=20;
+-- This update (above) ill be for change of payload from 15 to 20)
 update _red_log set change_when = '2012-02-01 0:0:0+0' where row_pkey='{1}' and change_when > '2011-12-01';
 
 
 -- validate that payload='{foo,bar}' before we changed it to be an int
 select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', '2011-12-03 0:0:0+0') $$ , 
-				  $$ values(1,ARRAY['foo','bar']) $$ ,
-				  'get_row_from_history() shows the correct value after we change the type a second time, when looking to a point in time before the second change.');
+                  $$ values(1,15) $$ ,
+                  'get_row_from_history() shows the correct value after we change the type a second time, when looking to a point in time before the second change.');
 
--- validate that payload=15 before we changed it to be an int
+--  validate that payload=15 before we changed it to be an int
 select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', '2012-01-20 0:0:0+0') $$ , 
-				  $$ values(1,15) $$ ,
-				  'get_row_from_history() shows the new value that was set with ALTER COLUMN ... USING <constant>.');
+                  $$ values(1,15) $$ ,
+                  'get_row_from_history() shows the new value that was set with ALTER COLUMN ... USING <constant>.');
 
 -- validate that payload=20 after we updated its int value
 select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', '2012-02-03 0:0:0+0') $$ , 
-				  $$ values(1,20) $$ ,
-				  'get_row_from_history() shows the correct value and data type after updating the value.');
+                  $$ values(1,20) $$ ,
+                  'get_row_from_history() shows the correct value and data type after updating the value.');
 
 
 select * from finish();
