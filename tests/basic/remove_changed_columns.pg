@@ -5,10 +5,10 @@ select plan(4);
 
 SET timezone = 'UTC';
 
-set search_path to beta,_change_logger,public;
+set search_path to beta,_flux,public;
 
 -- turn on logging on an empty table & make some change
-select _change_logger.enable_change_logging('beta', 'red', '_red_log');
+select _flux.enable_change_logging('beta', 'red', '_red_log');
 
 insert into red (id,ts,payload) values (2,'2015-01-01 0:0:1+0','aa');
 update red set ts='2015-01-01 0:0:2+0' where id=2;

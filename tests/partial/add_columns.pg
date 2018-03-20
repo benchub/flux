@@ -1,9 +1,9 @@
 begin;
 select plan(8);
 
-set search_path to alpha,_change_logger,public;
+set search_path to alpha,_flux,public;
 
-select _change_logger.enable_change_logging('alpha', 'red', '_red_log', 'include', array['id','payload']);
+select _flux.enable_change_logging('alpha', 'red', '_red_log', 'include', array['id','payload']);
 
 insert into red (id,ts,payload) values (3,'2015-01-01 0:0:0+0','a');
 SELECT results_eq(
@@ -35,7 +35,7 @@ SELECT results_eq(
 );
 
 
-select _change_logger.enable_change_logging('alpha', 'green', '_green_log', 'exclude', array['ts']);
+select _flux.enable_change_logging('alpha', 'green', '_green_log', 'exclude', array['ts']);
 insert into green (one,two,ts,payload) values (7,13,'2015-01-01 0:0:0+0','a');
 SELECT results_eq(
     $$ SELECT change_type::TEXT, count(*) FROM _green_log WHERE row_pkey = '{7,13}'::TEXT[] group BY change_type ORDER BY change_type $$,

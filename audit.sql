@@ -1,15 +1,15 @@
 \timing off
 BEGIN;
 
--- We need to put functions somewhere. Naming the schema "_change_logger" is easy, but in final version it might be configurable.
-DROP SCHEMA IF EXISTS _change_logger cascade;
-CREATE SCHEMA _change_logger;
+-- We need to put functions somewhere. Naming the schema "_flux" is easy, but in final version it might be configurable.
+DROP SCHEMA IF EXISTS _flux cascade;
+CREATE SCHEMA _flux;
 
 -- Simplifies creation of functions/types/tables.
 SELECT format('Search path (temporarily) set to: %s',
     set_config(
         'search_path',
-        '_change_logger, ' || current_setting('search_path'),
+        '_flux, ' || current_setting('search_path'),
         true
     )
 );
@@ -50,7 +50,7 @@ BEGIN
     v_use_pkey := v_orig_new->v_key_columns;
 
     EXECUTE v_sql
-        USING clock_timestamp(), current_user, lower( TG_OP )::_change_logger.change_type, v_use_pkey;
+        USING clock_timestamp(), current_user, lower( TG_OP )::_flux.change_type, v_use_pkey;
 
     RETURN NULL;
 END;
@@ -60,7 +60,7 @@ $$ language plpgsql;
 CREATE OR REPLACE FUNCTION trigger_delete() RETURNS TRIGGER AS $$
 DECLARE
     v_log_table          TEXT                             :=   TG_ARGV[0];
-    v_modifier_type      _change_logger.column_modifier   :=   TG_ARGV[1];
+    v_modifier_type      _flux.column_modifier   :=   TG_ARGV[1];
     v_modifier_columns   TEXT[]                           :=   NULL;
     v_key_columns        TEXT[]                           :=   TG_ARGV[3];
     v_orig_old           hstore;
@@ -89,17 +89,17 @@ BEGIN
     END IF;
 
     EXECUTE v_sql
-        USING clock_timestamp(), current_user, lower( TG_OP )::_change_logger.change_type, v_use_pkey, v_use_data;
+        USING clock_timestamp(), current_user, lower( TG_OP )::_flux.change_type, v_use_pkey, v_use_data;
 
     RETURN NULL;
 END;
 $$ language plpgsql;
 
--- Trigger function that handles 'UPDATE' events on _change_loggered tables.
+-- Trigger function that handles 'UPDATE' events on _fluxed tables.
 CREATE OR REPLACE FUNCTION trigger_update() RETURNS TRIGGER AS $$
 DECLARE
     v_log_table          TEXT                    :=   TG_ARGV[0];
-    v_modifier_type      _change_logger.column_modifier   :=   TG_ARGV[1];
+    v_modifier_type      _flux.column_modifier   :=   TG_ARGV[1];
     v_modifier_columns   TEXT[]                  :=   NULL;
     v_key_columns        TEXT[]                  :=   TG_ARGV[3];
     v_orig_new           hstore;
@@ -151,7 +151,7 @@ BEGIN
     END IF;
 
     EXECUTE v_sql
-        USING clock_timestamp(), current_user, lower( TG_OP )::_change_logger.change_type, v_use_pkey, v_use_data;
+        USING clock_timestamp(), current_user, lower( TG_OP )::_flux.change_type, v_use_pkey, v_use_data;
 
     RETURN NULL;
 END;
@@ -159,7 +159,7 @@ $$ language plpgsql;
 
 -- Helper function that makes sure that there is metadata table in given schema.
 -- If it doesn't exist - create it.
--- If it does - check if it's schema looks like proper metadata table for _change_logger.
+-- If it does - check if it's schema looks like proper metadata table for _flux.
 CREATE OR REPLACE FUNCTION create_metadata_table( IN schema_name TEXT ) RETURNS void as $$
 DECLARE
     p_schema_name  ALIAS FOR schema_name;
@@ -196,7 +196,7 @@ BEGIN
         table_name         TEXT                            NOT NULL,
         pkey_columns       TEXT[]                          NOT NULL,
         modifier_columns   TEXT[],
-        modifier_type      _change_logger.column_modifier  NOT NULL,
+        modifier_type      _flux.column_modifier  NOT NULL,
         log_table          TEXT                            NOT NULL,
         clean_it           BOOL                            NOT NULL DEFAULT false,
         PRIMARY KEY        (table_name),
@@ -253,11 +253,11 @@ $$ language plpgsql;
 
 -- Function that should be called to enable change logging on a table.
 -- Usage:
--- select _change_logger.enable_change_logging( 'table_schema', 'table_name', 'log_table' );
+-- select _flux.enable_change_logging( 'table_schema', 'table_name', 'log_table' );
 -- will enable logging of all columns in table_schema.table_name. Log of changes will go to table table_schema.log_table
--- select _change_logger.enable_change_logging( 'table_schema', 'table_name', 'log_table', 'include', ARRAY['a', 'b', 'c'] );
+-- select _flux.enable_change_logging( 'table_schema', 'table_name', 'log_table', 'include', ARRAY['a', 'b', 'c'] );
 -- will enable logging of only columns "a", "b", and "c" in table table_schema.table_name
--- select _change_logger.enable_change_logging( 'table_schema', 'table_name', 'log_table', 'exclude', ARRAY['a', 'b', 'c'] );
+-- select _flux.enable_change_logging( 'table_schema', 'table_name', 'log_table', 'exclude', ARRAY['a', 'b', 'c'] );
 -- will enable logging of all columns except "a", "b", and "c" in table table_schema.table_name
 CREATE OR REPLACE FUNCTION enable_change_logging(
     IN   source_schema      TEXT,
@@ -293,9 +293,9 @@ BEGIN
     END IF;
 
     -- Make sure we have metadata in given SCHEMA
-    perform _change_logger.create_metadata_table( p_source_schema );
+    perform _flux.create_metadata_table( p_source_schema );
 
-    v_key_columns := _change_logger.get_table_key_columns( p_source_schema, p_source_table );
+    v_key_columns := _flux.get_table_key_columns( p_source_schema, p_source_table );
     -- Make sure that the table does have PRIMARY KEY.
     IF v_key_columns IS NULL THEN
         raise exception 'There is no PRIMARY KEY on the TABLE %.% ?!', p_source_schema, p_source_table;
@@ -306,7 +306,7 @@ BEGIN
     v_sql := format( 'CREATE TABLE %I.%I (
         change_when   timestamptz                  NOT NULL,
         change_by     TEXT                         NOT NULL,
-        change_type   _change_logger.change_type   NOT NULL,
+        change_type   _flux.change_type   NOT NULL,
         row_pkey      TEXT[]                       NOT NULL,
         row_data      hstore,
         PRIMARY KEY   (row_pkey, change_when)
@@ -325,7 +325,7 @@ BEGIN
     EXECUTE v_sql USING p_source_table, v_key_columns, p_modifier_columns, p_modifier_type, p_log_table;
 
     v_sql := format(
-        'CREATE TRIGGER change_logging_trigger_insert AFTER INSERT ON %I.%I FOR EACH ROW EXECUTE PROCEDURE _change_logger.trigger_insert(%L, %L)',
+        'CREATE TRIGGER change_logging_trigger_insert AFTER INSERT ON %I.%I FOR EACH ROW EXECUTE PROCEDURE _flux.trigger_insert(%L, %L)',
         p_source_schema,
         p_source_table,
         p_log_table,
@@ -333,7 +333,7 @@ BEGIN
     );
     execute v_sql;
     v_sql := format(
-        'CREATE TRIGGER change_logging_trigger_update AFTER UPDATE ON %I.%I FOR EACH ROW EXECUTE PROCEDURE _change_logger.trigger_update(%L, %L, %L, %L)',
+        'CREATE TRIGGER change_logging_trigger_update AFTER UPDATE ON %I.%I FOR EACH ROW EXECUTE PROCEDURE _flux.trigger_update(%L, %L, %L, %L)',
         p_source_schema,
         p_source_table,
         p_log_table,
@@ -343,7 +343,7 @@ BEGIN
     );
     execute v_sql;
     v_sql := format(
-        'CREATE TRIGGER change_logging_trigger_delete AFTER DELETE ON %I.%I FOR EACH ROW EXECUTE PROCEDURE _change_logger.trigger_delete(%L, %L, %L, %L)',
+        'CREATE TRIGGER change_logging_trigger_delete AFTER DELETE ON %I.%I FOR EACH ROW EXECUTE PROCEDURE _flux.trigger_delete(%L, %L, %L, %L)',
         p_source_schema,
         p_source_table,
         p_log_table,
@@ -359,9 +359,9 @@ $$ language plpgsql;
 
 -- Function that should be called to disable change logging on a table.
 -- Usage:
--- select _change_logger.disable_change_logging( 'table_schema', 'table_name' );
+-- select _flux.disable_change_logging( 'table_schema', 'table_name' );
 -- This function does *NOT* remove log tables, as this operation can take significant time, and it would keep lock on base table.
--- To remove the log tables, simply call _change_logger.cleanup() function afterwards.
+-- To remove the log tables, simply call _flux.cleanup() function afterwards.
 CREATE OR REPLACE FUNCTION disable_change_logging(
     IN   source_schema      TEXT,
     IN   source_table       TEXT
@@ -400,7 +400,7 @@ $$ language plpgsql;
 
 -- Function that should be called to remove obsolete log tables
 -- Usage:
--- select _change_logger.cleanup()
+-- select _flux.cleanup()
 CREATE OR REPLACE FUNCTION cleanup() RETURNS VOID AS $$
 DECLARE
     v_expected     TEXT[]    =   array[   'clean_it',   'log_table',   'modifier_columns',   'modifier_type',   'pkey_columns',   'table_name'   ];
@@ -440,7 +440,7 @@ $$ language plpgsql;
 
 -- Returns row from given table, with given primary key, as it existed alter table specific time in the past.
 -- Sample usage:
--- SELECT * FROM _change_logger.get_row_from_history( NULL::some_schema.some_table, 'id=>312123', '2018-02-14 07:00:00+00' );
+-- SELECT * FROM _flux.get_row_from_history( NULL::some_schema.some_table, 'id=>312123', '2018-02-14 07:00:00+00' );
 CREATE OR REPLACE FUNCTION get_row_from_history(
     IN source_table ANYELEMENT,
     IN pkey_values hstore,
@@ -504,7 +504,7 @@ $$ language plpgsql;
 
 -- Returns full row history, with all changes shown:
 -- Sample usage:
--- SELECT * FROM _change_logger.get_row_history( 'some_schema', 'some_table', 'id=>312123' );
+-- SELECT * FROM _flux.get_row_history( 'some_schema', 'some_table', 'id=>312123' );
 CREATE OR REPLACE FUNCTION get_row_history(
     IN    source_schema  TEXT,
     IN    source_table   TEXT,

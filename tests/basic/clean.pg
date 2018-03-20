@@ -3,11 +3,11 @@
 
 begin;
 
-set search_path to beta,_change_logger,public;
+set search_path to beta,_flux,public;
 
 -- turn on logging on empty tables & make some changes to them
-select _change_logger.enable_change_logging('beta', 'red', '_red_log');
-select _change_logger.enable_change_logging('beta', 'green', '_green_log');
+select _flux.enable_change_logging('beta', 'red', '_red_log');
+select _flux.enable_change_logging('beta', 'green', '_green_log');
 
 insert into red (id,ts,payload) values (1,'2015-01-01 0:0:0+0','a');
 update red set payload = 'b' where payload = 'a';

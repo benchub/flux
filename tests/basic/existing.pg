@@ -4,13 +4,13 @@
 begin;
 select plan(4);
 
-set search_path to beta,_change_logger,public;
+set search_path to beta,_flux,public;
 
 ALTER TABLE red DROP column ts;
 
 insert into red (id,payload) values (1,'pre-existing');
 
-select _change_logger.enable_change_logging('beta', 'red', '_red_log');
+select _flux.enable_change_logging('beta', 'red', '_red_log');
 
 select results_eq($$ select * from get_row_from_history( NULL::beta.red, 'id=>1', now() - '100 years'::INTERVAL) $$ ,
     $$ values(1,'pre-existing') $$ ,

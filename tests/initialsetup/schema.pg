@@ -5,7 +5,7 @@ begin;
 select plan(17);
 
 -- the schemas we expect to be present
-select schemas_are(ARRAY['public','alpha','beta','_change_logger']);
+select schemas_are(ARRAY['public','alpha','beta','_flux']);
 
 -- how we expect those to look
 select tables_are('alpha',array['red','green','blue']);
@@ -16,20 +16,20 @@ select extensions_are(array['hstore','plpgsql']);
 
 -- expected types
 select has_type('hstore'::name);
-select has_enum('_change_logger', 'column_modifier'::name);
-select has_enum('_change_logger', 'change_type'::name);
+select has_enum('_flux', 'column_modifier'::name);
+select has_enum('_flux', 'change_type'::name);
 
 -- expected functions
-select has_function('_change_logger', 'trigger_insert'::name);
-select has_function('_change_logger', 'trigger_delete'::name);
-select has_function('_change_logger', 'trigger_update'::name);
-select has_function('_change_logger', 'create_metadata_table'::name, array['text']);
-select has_function('_change_logger', 'get_table_key_columns'::name, array['text','text']);
-select has_function('_change_logger', 'enable_change_logging'::name, array['text','text','text','_change_logger.column_modifier','text[]']);
-select has_function('_change_logger', 'disable_change_logging'::name, array['text','text']);
-select has_function('_change_logger', 'cleanup'::name);
-select has_function('_change_logger', 'get_row_from_history'::name, array['anyelement','hstore','timestamp with time zone']);
-select has_function('_change_logger', 'get_row_history'::name, array['text','text','hstore']);
+select has_function('_flux', 'trigger_insert'::name);
+select has_function('_flux', 'trigger_delete'::name);
+select has_function('_flux', 'trigger_update'::name);
+select has_function('_flux', 'create_metadata_table'::name, array['text']);
+select has_function('_flux', 'get_table_key_columns'::name, array['text','text']);
+select has_function('_flux', 'enable_change_logging'::name, array['text','text','text','_flux.column_modifier','text[]']);
+select has_function('_flux', 'disable_change_logging'::name, array['text','text']);
+select has_function('_flux', 'cleanup'::name);
+select has_function('_flux', 'get_row_from_history'::name, array['anyelement','hstore','timestamp with time zone']);
+select has_function('_flux', 'get_row_history'::name, array['text','text','hstore']);
 
 select * from finish();
 rollback;

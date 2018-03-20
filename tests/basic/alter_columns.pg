@@ -3,13 +3,13 @@
 begin;
 select plan(6);
 
-set search_path to beta,_change_logger,public;
+set search_path to beta,_flux,public;
 
 alter table red drop column ts;
 
 
 -- turn on logging on an empty table & make some change
-select _change_logger.enable_change_logging('beta', 'red', '_red_log');
+select _flux.enable_change_logging('beta', 'red', '_red_log');
 
 insert into red (id,payload) values (1,'a');
 update red set payload = 'b' where payload = 'a';
