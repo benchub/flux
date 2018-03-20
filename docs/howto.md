@@ -2,7 +2,11 @@
 
 1. You need to download code, for example using: `git clone https://github.com/benchub/flux.git`
 2. In downloaded directory run `sudo make install`
-3. In your database, run: `create extension flux`
+3. In your database, run: `create extension hstore` (hstore is required by
+   flux)
+4. In your database, run: `create extension flux`
+
+You should be set to actually use it now.
 
 # Using Flux
 
