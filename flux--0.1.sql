@@ -1,18 +1,3 @@
-\timing off
-BEGIN;
-
--- We need to put functions somewhere. Naming the schema "_flux" is easy, but in final version it might be configurable.
-DROP SCHEMA IF EXISTS _flux cascade;
-CREATE SCHEMA _flux;
-
--- Simplifies creation of functions/types/tables.
-SELECT format('Search path (temporarily) set to: %s',
-    set_config(
-        'search_path',
-        '_flux, ' || current_setting('search_path'),
-        true
-    )
-);
 
 -- Possible modifiers of columns to be logged:
 -- - all means: all columns from row will be used
@@ -54,7 +39,9 @@ BEGIN
 
     RETURN NULL;
 END;
-$$ language plpgsql;
+$$ language plpgsql
+SET search_path FROM current
+;
 
 -- Trigger function that handles 'DELETE' events on audited tables.
 CREATE OR REPLACE FUNCTION trigger_delete() RETURNS TRIGGER AS $$
@@ -93,7 +80,9 @@ BEGIN
 
     RETURN NULL;
 END;
-$$ language plpgsql;
+$$ language plpgsql
+SET search_path FROM current
+;
 
 -- Trigger function that handles 'UPDATE' events on _fluxed tables.
 CREATE OR REPLACE FUNCTION trigger_update() RETURNS TRIGGER AS $$
@@ -155,7 +144,9 @@ BEGIN
 
     RETURN NULL;
 END;
-$$ language plpgsql;
+$$ language plpgsql
+SET search_path FROM current
+;
 
 -- Helper function that makes sure that there is metadata table in given schema.
 -- If it doesn't exist - create it.
@@ -217,7 +208,9 @@ BEGIN
 
     RETURN;
 END;
-$$ language plpgsql;
+$$ language plpgsql
+SET search_path FROM current
+;
 
 -- Helper function that RETURNS array of column names of PRIMARY KEY in given TABLE.
 -- Column names are ordered alphabetically.
@@ -249,7 +242,9 @@ BEGIN
         i.indisprimary;
     RETURN;
 END;
-$$ language plpgsql;
+$$ language plpgsql
+SET search_path FROM current
+;
 
 -- Function that should be called to enable change logging on a table.
 -- Usage:
@@ -355,7 +350,9 @@ BEGIN
 
     RETURN;
 END;
-$$ language plpgsql;
+$$ language plpgsql
+SET search_path FROM current
+;
 
 -- Function that should be called to disable change logging on a table.
 -- Usage:
@@ -396,7 +393,9 @@ BEGIN
     execute v_sql USING p_source_table;
     RETURN;
 END;
-$$ language plpgsql;
+$$ language plpgsql
+SET search_path FROM current
+;
 
 -- Function that should be called to remove obsolete log tables
 -- Usage:
@@ -436,7 +435,9 @@ BEGIN
     END loop;
     RETURN;
 END;
-$$ language plpgsql;
+$$ language plpgsql
+SET search_path FROM current
+;
 
 -- Returns row from given table, with given primary key, as it existed alter table specific time in the past.
 -- Sample usage:
@@ -500,7 +501,9 @@ BEGIN
     END IF;
     RETURN;
 END;
-$$ language plpgsql;
+$$ language plpgsql
+SET search_path FROM current
+;
 
 -- Returns full row history, with all changes shown:
 -- Sample usage:
@@ -586,6 +589,7 @@ BEGIN
 
     RETURN;
 END;
-$$ language plpgsql;
+$$ language plpgsql
+SET search_path FROM current
+;
 
-COMMIT;
