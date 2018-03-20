@@ -176,7 +176,7 @@ BEGIN
         join pg_attribute a on c.oid = a.attrelid
     WHERE
         n.nspname = p_schema_name AND
-        c.relname = '_change_logged_tables' AND
+        c.relname = '_flux_tables' AND
         c.relkind = 'r' AND
         NOT a.attisdropped AND
         a.attnum > 0;
@@ -186,13 +186,13 @@ BEGIN
             RETURN;
         END IF;
         raise exception 'Table % already exists in schema % but its columns look wrong. Columns it has: %, columns it should have: %',
-            '_change_logged_tables',
+            '_flux_tables',
             p_schema_name,
             v_meta_columns,
             v_expected;
     END if;
 
-    v_sql := format( 'CREATE TABLE %I._change_logged_tables (
+    v_sql := format( 'CREATE TABLE %I._flux_tables (
         table_name         TEXT                            NOT NULL,
         pkey_columns       TEXT[]                          NOT NULL,
         modifier_columns   TEXT[],
@@ -204,7 +204,7 @@ BEGIN
     )', p_schema_name);
     execute v_sql;
 
-    v_sql := format( 'ALTER TABLE %I._change_logged_tables
+    v_sql := format( 'ALTER TABLE %I._flux_tables
         ADD CONSTRAINT columns_listed_for_modified_columnsets
             CHECK (
                 ( modifier_type = %L AND modifier_columns IS NULL ) OR
@@ -317,7 +317,7 @@ BEGIN
     execute v_sql;
 
     v_sql := format(
-        'INSERT INTO %I._change_logged_tables
+        'INSERT INTO %I._flux_tables
             (table_name, pkey_columns, modifier_columns, modifier_type, log_table)
             VALUES ($1, $2, $3, $4, $5)',
         p_source_schema
@@ -390,7 +390,7 @@ BEGIN
     );
     execute v_sql;
     v_sql := format(
-        'UPDATE %I._change_logged_tables SET clean_it = true WHERE table_name = $1',
+        'UPDATE %I._flux_tables SET clean_it = true WHERE table_name = $1',
         p_source_schema
     );
     execute v_sql USING p_source_table;
@@ -419,7 +419,7 @@ BEGIN
             join pg_namespace n on c.relnamespace = n.oid
             join pg_attribute a on c.oid = a.attrelid
         WHERE
-            c.relname = '_change_logged_tables' AND
+            c.relname = '_flux_tables' AND
             c.relkind = 'r' AND
             NOT a.attisdropped AND
             a.attnum > 0
@@ -427,7 +427,7 @@ BEGIN
         ORDER BY n.nspname
     LOOP
         CONTINUE WHEN v_temp.table_columns <> v_expected;
-        v_tables_sql := format( 'with d as (DELETE FROM %I._change_logged_tables WHERE clean_it returning *) SELECT * FROM d', v_temp.table_schema );
+        v_tables_sql := format( 'with d as (DELETE FROM %I._flux_tables WHERE clean_it returning *) SELECT * FROM d', v_temp.table_schema );
         for v_table IN EXECUTE v_tables_sql LOOP
             RAISE WARNING 'Dropping old log table: %.%', v_temp.table_schema, v_table.log_table;
             v_sql := format('DROP TABLE %I.%I', v_temp.table_schema, v_table.log_table);
@@ -470,7 +470,7 @@ BEGIN
     WHERE
         t.oid = pg_typeof( p_source_table );
 
-    v_sql := format('SELECT * FROM %I._change_logged_tables WHERE NOT clean_it AND table_name = $1', v_source.schema_name);
+    v_sql := format('SELECT * FROM %I._flux_tables WHERE NOT clean_it AND table_name = $1', v_source.schema_name);
     execute v_sql INTO v_metadata USING v_source.table_name;
 
     IF v_metadata IS NULL THEN
@@ -547,7 +547,7 @@ BEGIN
         raise exception 'Looks like table %.% does not exist!', p_source_schema, p_source_table;
     END IF;
 
-    v_sql := format('SELECT * FROM %I._change_logged_tables WHERE NOT clean_it AND table_name = $1', p_source_schema);
+    v_sql := format('SELECT * FROM %I._flux_tables WHERE NOT clean_it AND table_name = $1', p_source_schema);
     execute v_sql INTO v_metadata USING p_source_table;
 
     IF v_metadata IS NULL THEN
