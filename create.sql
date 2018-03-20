@@ -21,6 +21,6 @@ insert into alpha.green (one,two,ts,payload) values (5,6,'2000-4-1 4:4:4+0','fir
 
 insert into alpha.blue (ts,payload) values ('2010-10-10 10:10:10+0','this happened');
 
--- install the audit code. Depesz plans to make this an exention at some point.
-\i audit.sql
+-- install the flux code. Depesz plans to make this an exention at some point.
+\i flux.sql
 
