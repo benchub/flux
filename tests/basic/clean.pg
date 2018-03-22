@@ -13,7 +13,9 @@ insert into red (id,ts,payload) values (1,'2015-01-01 0:0:0+0','a');
 update red set payload = 'b' where payload = 'a';
 delete from red where payload = 'b';
 
-insert into green (one,two,ts,payload) values (1,1,'2015-01-02 0:0:0+0','b');
+insert into green (one,two,ts,payload) values (1,1,'2015-01-02 0:0:0+0','c');
+update green set payload = 'd' where payload = 'c';
+delete from green where payload = 'd';
 
 -- twiddle the change log so that we have something static to test against.
 update _red_log set change_when = '2018-02-01 0:0:0+0' where row_pkey='{1}' and change_type = 'insert';
@@ -21,39 +23,57 @@ update _red_log set change_when = '2018-03-01 0:0:0+0' where row_pkey='{1}' and 
 update _red_log set change_when = '2018-04-01 0:0:0+0' where row_pkey='{1}' and change_type = 'delete';
 
 update _green_log set change_when = '2018-02-02 0:0:0+0' where row_pkey='{1,1}' and change_type = 'insert';
+update _green_log set change_when = '2018-03-02 0:0:0+0' where row_pkey='{1,1}' and change_type = 'update';
+update _green_log set change_when = '2018-04-02 0:0:0+0' where row_pkey='{1,1}' and change_type = 'delete';
 
 
 
 
-select plan(9);
+select plan(29);
 
 -- no rows before we made the PKs
 select is(count(*),0::bigint) from get_row_from_history( NULL::beta.red, 'id=>1', '2018-01-02 0:0:0+0');
-select is(count(*),0::bigint) from get_row_from_history( NULL::beta.green, 'one=>1,two=>2', '2018-01-02 0:0:0+0');
+select is(count(*),0::bigint) from get_row_from_history( NULL::beta.green, '"one"=>1,"two"=>1', '2018-01-02 0:0:0+0');
 
 -- one row while the PK was around
--- extend for multicolumn PK
 select is(count(*),1::bigint) from get_row_from_history( NULL::beta.red, 'id=>1', '2018-02-02 0:0:0+0');
 select is(count(*),1::bigint) from get_row_from_history( NULL::beta.red, 'id=>1', '2018-03-02 0:0:0+0');
+select is(count(*),1::bigint) from get_row_from_history( NULL::beta.green, '"one"=>1,"two"=>1', '2018-02-03 0:0:0+0');
+select is(count(*),1::bigint) from get_row_from_history( NULL::beta.green, '"one"=>1,"two"=>1', '2018-03-03 0:0:0+0');
+
 
 -- no rows after we deleted the PK
--- extend for multicolumn PK
 select is(count(*),0::bigint) from get_row_from_history( NULL::beta.red, 'id=>1', '2018-04-02 0:0:0+0');
+select is(count(*),0::bigint) from get_row_from_history( NULL::beta.green, '"one"=>1,"two"=>1', '2018-04-03 0:0:0+0');
 
 -- after insert and before update, we see the first payload value
 -- extend for multicolumn PK
 select results_eq($$ select id,ts at time zone 'UTC',payload from get_row_from_history( NULL::beta.red, 'id=>1', '2018-02-02 0:0:0+0') $$ , 
 				  $$ values(1,'2015-01-01 00:00:00+0'::timestamptz at time zone 'UTC','a') $$);
+select results_eq($$ select one,two,ts at time zone 'UTC',payload from get_row_from_history( NULL::beta.green, '"one"=>1,"two"=>1', '2018-02-03 0:0:0+0') $$ , 
+				  $$ values(1,1,'2015-01-02 00:00:00+0'::timestamptz at time zone 'UTC','c') $$);
+
 
 -- after update and before delete, we see the second payload value
 select results_eq($$ select id,ts at time zone 'UTC',payload from get_row_from_history( NULL::beta.red, 'id=>1', '2018-03-02 0:0:0+0') $$ , 
 				  $$ values(1,'2015-01-01 00:00:00+0'::timestamptz at time zone 'UTC','b') $$);
-
+select results_eq($$ select one,two,ts at time zone 'UTC',payload from get_row_from_history( NULL::beta.green, '"one"=>1,"two"=>1', '2018-03-03 0:0:0+0') $$ , 
+				  $$ values(1,1,'2015-01-02 00:00:00+0'::timestamptz at time zone 'UTC','d') $$);
 
 -- validate logging on one table didn't affect any others
-
+select is(count(*),3::bigint) from _red_log;
+select is(count(*),3::bigint) from _green_log;
+insert into green (one,two,payload) values (2,2,'ff');
+select is(count(*),3::bigint) from _red_log;
+select is(count(*),4::bigint) from _green_log;
 
 -- validate logging on table x.y didn't affect z.y
+select _flux.enable_change_logging('alpha', 'green', '_green_log');
+select is(count(*),4::bigint) from beta._green_log;
+select is(count(*),0::bigint) from alpha._green_log;
+insert into alpha.green (one,two,payload) values (30,40,'I am alpha!');
+select is(count(*),4::bigint) from beta._green_log;
+select is(count(*),1::bigint) from alpha._green_log;
 
 -- validate that changes for one PK don't affect logs for another PK
 insert into red (id,ts,payload) values (2,'2016-01-01 0:0:0+0','aa');
@@ -65,6 +85,47 @@ select results_eq($$ select id,ts at time zone 'UTC',payload from get_row_from_h
 
 
 -- validate get_row_history() function
+-- ...for single-column PK
+select results_eq($$ select (row_data->'id')::int,
+							(row_data->'ts')::timestamptz at time zone 'UTC',
+							row_data->'payload' as payload,
+							valid_from at time zone 'UTC',
+							valid_to at time zone 'UTC' 
+						from get_row_history( 'beta', 'red', '"id"=>1') where row_data->'payload'='a' $$ , 
+				  $$ values(1,'2015-01-01 00:00:00+0'::timestamptz at time zone 'UTC','a','2018-02-01 00:00:00+0'::timestamptz at time zone 'UTC','2018-03-01 00:00:00+0'::timestamptz at time zone 'UTC') $$);
+select results_eq($$ select (row_data->'id')::int,
+							(row_data->'ts')::timestamptz at time zone 'UTC',
+							row_data->'payload' as payload,
+							valid_from at time zone 'UTC',
+							valid_to at time zone 'UTC' 
+						from get_row_history( 'beta', 'red', '"id"=>1') where row_data->'payload'='b' $$ , 
+				  $$ values(1,'2015-01-01 00:00:00+0'::timestamptz at time zone 'UTC','b','2018-03-01 00:00:00+0'::timestamptz at time zone 'UTC','2018-04-01 00:00:00+0'::timestamptz at time zone 'UTC') $$);
+select results_eq($$ select (row_data->'id')::int,
+							(row_data->'ts')::timestamptz at time zone 'UTC',
+							row_data->'payload' as payload,
+							valid_from at time zone 'UTC',
+							valid_to
+						from get_row_history( 'beta', 'red', '"id"=>2') $$ , 
+				  $$ values(2,'2016-01-01 00:00:00+0'::timestamptz at time zone 'UTC','aa','2018-02-01 00:00:00+0'::timestamptz at time zone 'UTC','infinity'::timestamptz) $$);
+select is(count(*),0::bigint) from get_row_history( 'beta', 'red', 'id=>3');
+
+-- ...for multi-column PK
+select results_eq($$ select (row_data->'one')::int, (row_data->'two')::int,
+							(row_data->'ts')::timestamptz at time zone 'UTC',
+							row_data->'payload' as payload,
+							valid_from at time zone 'UTC',
+							valid_to at time zone 'UTC' 
+						from get_row_history( 'beta', 'green', '"one"=>1,"two"=>1') where row_data->'payload'='c' $$ , 
+				  $$ values(1,1,'2015-01-02 00:00:00+0'::timestamptz at time zone 'UTC','c','2018-02-02 00:00:00+0'::timestamptz at time zone 'UTC','2018-03-02 00:00:00+0'::timestamptz at time zone 'UTC') $$);
+select results_eq($$ select (row_data->'one')::int, (row_data->'two')::int,
+							(row_data->'ts')::timestamptz at time zone 'UTC',
+							row_data->'payload' as payload,
+							valid_from at time zone 'UTC',
+							valid_to at time zone 'UTC' 
+						from get_row_history( 'beta', 'green', '"one"=>1,"two"=>1') where row_data->'payload'='d' $$ , 
+				  $$ values(1,1,'2015-01-02 00:00:00+0'::timestamptz at time zone 'UTC','d','2018-03-02 00:00:00+0'::timestamptz at time zone 'UTC','2018-04-02 00:00:00+0'::timestamptz at time zone 'UTC') $$);
+select is(count(*),0::bigint) from get_row_history( 'beta', 'green', '"one"=>100,"two"=>200');
+
 
 -- try to re-use a deleted PK
 
