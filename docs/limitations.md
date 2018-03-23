@@ -5,6 +5,12 @@ and removing them might be complicated.
 
 Here goes description of the limits we currently know about:
 
+# Dropping the flux extension doesn't clean up anything
+
+It is argueably correct to not clean up log tables, but we should probably at
+least remove the _flux schema, and possibly the flux metadata tables in each schmea
+flux was used.
+
 # Can't change table name while it's being flux'ed
 
 This is true, to some extent. Specifically, if you'd do:
