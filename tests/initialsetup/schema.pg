@@ -12,7 +12,7 @@ select tables_are('alpha',array['red','green','blue']);
 select tables_are('beta',array['red','green','blue']);
 
 -- exepected extensions
-select extensions_are(array['hstore','plpgsql']);
+select extensions_are(array['flux','hstore','plpgsql']);
 
 -- expected types
 select has_type('hstore'::name);
