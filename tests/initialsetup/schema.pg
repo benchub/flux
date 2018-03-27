@@ -25,7 +25,7 @@ select has_function('_flux', 'trigger_delete'::name);
 select has_function('_flux', 'trigger_update'::name);
 select has_function('_flux', 'create_metadata_table'::name, array['text']);
 select has_function('_flux', 'get_table_key_columns'::name, array['text','text']);
-select has_function('_flux', 'enable_change_logging'::name, array['text','text','text','_flux.column_modifier','text[]']);
+select has_function('_flux', 'enable_change_logging'::name, array['text','text','text','_flux.column_modifier','text[]','interval']);
 select has_function('_flux', 'disable_change_logging'::name, array['text','text']);
 select has_function('_flux', 'cleanup'::name);
 select has_function('_flux', 'get_row_from_history'::name, array['anyelement','hstore','timestamp with time zone']);

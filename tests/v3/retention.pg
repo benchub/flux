@@ -1,0 +1,29 @@
+-- simple usage of logged updates/inserts/delete/truncate
+
+
+begin;
+
+select plan(2);
+
+set search_path to beta,_flux,public;
+
+-- turn on logging on empty tables & make some changes to them
+select _flux.enable_change_logging('beta', 'red', '_red_log', 'all', NULL, '50 days' );
+
+insert into red (id,ts,payload) values (1,'2015-01-01 0:0:0+0','a');
+update _red_log set change_when = now() - '2 months'::interval where row_pkey='{1}' and change_type = 'insert';
+update red set payload = 'b' where payload = 'a';
+update _red_log set change_when = now() - '1 months'::interval where row_pkey='{1}' and change_type = 'update';
+delete from red where payload = 'b';
+
+-- no rows before we made the PKs
+select is(count(*),3::bigint) from _red_log;
+
+select _flux.cleanup();
+
+select is(count(*),2::bigint) from _red_log;
+
+select * from finish();
+rollback;
+
+-- vim: set ft=sql:

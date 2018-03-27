@@ -1,6 +1,6 @@
 #extesion
 comment = 'Provides a way to log data changes in table and restore rows as they were in the past'
-default_version = '0.2'
+default_version = '0.3'
 relocatable = false
 superuser = false
 requires = 'hstore'

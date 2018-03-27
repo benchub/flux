@@ -173,7 +173,7 @@ DECLARE
     p_schema_name  ALIAS FOR schema_name;
     v_sql          TEXT;
     v_meta_columns TEXT[];
-    v_expected     TEXT[] = array[ 'clean_it', 'log_table', 'modifier_columns', 'modifier_type', 'pkey_columns', 'table_name' ];
+    v_expected     TEXT[] = array[ 'clean_it', 'log_table', 'modifier_columns', 'modifier_type', 'pkey_columns', 'retention', 'table_name' ];
 BEGIN
     -- Get array with names of columns in potentially existing copy of the meta table.
     SELECT
@@ -207,6 +207,7 @@ BEGIN
         modifier_type      _flux.column_modifier  NOT NULL,
         log_table          TEXT                            NOT NULL,
         clean_it           BOOL                            NOT NULL DEFAULT false,
+        retention          INTERVAL,
         PRIMARY KEY        (table_name),
         UNIQUE             (log_table)
     )', p_schema_name);
@@ -273,17 +274,21 @@ SET search_path FROM current
 -- will enable logging of only columns "a", "b", and "c" in table table_schema.table_name
 -- select _flux.enable_change_logging( 'table_schema', 'table_name', 'log_table', 'exclude', ARRAY['a', 'b', 'c'] );
 -- will enable logging of all columns except "a", "b", and "c" in table table_schema.table_name
+-- select _flux.enable_change_logging( 'table_schema', 'table_name', 'log_table', 'all', NULL, '3 months' );
+-- will enable logging of all columns, and make retention policy: keep changes for 3 months.
 CREATE OR REPLACE FUNCTION enable_change_logging(
     IN   source_schema      TEXT,
     IN   source_table       TEXT,
     IN   log_table          TEXT,
     IN   modifier_type      column_modifier   DEFAULT   'all',
-    IN   modifier_columns   TEXT[]            DEFAULT   NULL
+    IN   modifier_columns   TEXT[]            DEFAULT   NULL,
+    IN   retention          INTERVAL          DEFAULT   NULL
 ) RETURNS void as $$
 DECLARE
     p_source_schema      ALIAS     FOR   source_schema;
     p_source_table       ALIAS     FOR   source_table;
     p_log_table          ALIAS     FOR   log_table;
+    p_retention          ALIAS     FOR   retention;
     p_modifier_type      ALIAS     FOR   modifier_type;
     p_modifier_columns   ALIAS     FOR   modifier_columns;
     v_source_table       RECORD;
@@ -318,10 +323,10 @@ BEGIN
     -- At this moment, we have all the information we need, all looks sane, so we can create actual temporal logging "things"
 
     v_sql := format( 'CREATE TABLE %I.%I (
-        change_when   timestamptz                  NOT NULL,
-        change_by     TEXT                         NOT NULL,
+        change_when   timestamptz         NOT NULL,
+        change_by     TEXT                NOT NULL,
         change_type   _flux.change_type   NOT NULL,
-        row_pkey      TEXT[]                       NOT NULL,
+        row_pkey      TEXT[]              NOT NULL,
         row_data      hstore,
         PRIMARY KEY   (row_pkey, change_when)
         )',
@@ -332,11 +337,11 @@ BEGIN
 
     v_sql := format(
         'INSERT INTO %I._flux_tables
-            (table_name, pkey_columns, modifier_columns, modifier_type, log_table)
-            VALUES ($1, $2, $3, $4, $5)',
+            (table_name, pkey_columns, modifier_columns, modifier_type, log_table, retention)
+            VALUES ($1, $2, $3, $4, $5, $6)',
         p_source_schema
     );
-    EXECUTE v_sql USING p_source_table, v_key_columns, p_modifier_columns, p_modifier_type, p_log_table;
+    EXECUTE v_sql USING p_source_table, v_key_columns, p_modifier_columns, p_modifier_type, p_log_table, p_retention;
 
     v_sql := format(
         'CREATE TRIGGER change_logging_trigger_insert AFTER INSERT ON %I.%I FOR EACH ROW EXECUTE PROCEDURE _flux.trigger_insert(%L, %L)',
@@ -421,7 +426,7 @@ SET search_path FROM current
 -- select _flux.cleanup()
 CREATE OR REPLACE FUNCTION cleanup() RETURNS VOID AS $$
 DECLARE
-    v_expected     TEXT[]    =   array[   'clean_it',   'log_table',   'modifier_columns',   'modifier_type',   'pkey_columns',   'table_name'   ];
+    v_expected     TEXT[]    =   array[ 'clean_it', 'log_table', 'modifier_columns', 'modifier_type', 'pkey_columns', 'retention', 'table_name' ];
     v_temp         RECORD;
     v_tables_sql   TEXT;
     v_table        RECORD;
@@ -445,12 +450,21 @@ BEGIN
         ORDER BY n.nspname
     LOOP
         CONTINUE WHEN v_temp.table_columns <> v_expected;
+
+        -- Drop old log tables
         v_tables_sql := format( 'with d as (DELETE FROM %I._flux_tables WHERE clean_it returning *) SELECT * FROM d', v_temp.table_schema );
         for v_table IN EXECUTE v_tables_sql LOOP
-            RAISE WARNING 'Dropping old log table: %.%', v_temp.table_schema, v_table.log_table;
             v_sql := format('DROP TABLE %I.%I', v_temp.table_schema, v_table.log_table);
             execute v_sql;
         END loop;
+
+        -- handle retention
+        v_tables_sql := format('SELECT * FROM %I._flux_tables WHERE retention IS NOT NULL ORDER BY table_name', v_temp.table_schema);
+        for v_table IN EXECUTE v_tables_sql LOOP
+            v_sql := format('DELETE FROM %I.%I WHERE change_when < now() - $1::INTERVAL', v_temp.table_schema, v_table.log_table);
+            execute v_sql USING v_table.retention;
+        END loop;
+
     END loop;
     RETURN;
 END;
